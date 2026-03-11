@@ -171,6 +171,12 @@ export const apiHandler = {
 			newKey: encode(newKey),
 		});
 	},
+	copyObject: (bucket, sourceKey, destinationKey) => {
+		return api.post(`/buckets/${bucket}/copy`, {
+			sourceKey: encode(sourceKey),
+			destinationKey: encode(destinationKey),
+		});
+	},
 	updateMetadata: async (bucket, key, customMetadata, httpMetadata = {}) => {
 		let prefix = "";
 		if (key.includes("/")) {
@@ -254,10 +260,17 @@ export const apiHandler = {
 			},
 		);
 	},
-	fetchFilePage: async (bucket, prefix, delimiter = "/", cursor = null) => {
+	fetchFilePage: async (
+		bucket,
+		prefix,
+		delimiter = "/",
+		cursor = null,
+		displayPrefix = null,
+	) => {
 		const mainStore = useMainStore();
 		const contentFiles = [];
 		const contentFolders = [];
+		const namePrefix = displayPrefix !== null ? displayPrefix : prefix;
 
 		const response = await apiHandler.listObjects(
 			bucket,
@@ -273,7 +286,7 @@ export const apiHandler = {
 						!(obj.key.endsWith("/") && delimiter !== "") && obj.key !== prefix
 					); // Remove selected folder when delimiter is defined
 				})
-				.map((obj) => mapFile(obj, prefix))
+				.map((obj) => mapFile(obj, namePrefix))
 				.filter((obj) => {
 					// Remove hidden files
 					return !(
@@ -289,7 +302,7 @@ export const apiHandler = {
 		if (response.data.delimitedPrefixes) {
 			const folders = response.data.delimitedPrefixes
 				.map((obj) => ({
-					name: obj.replace(prefix, ""),
+					name: obj.replace(namePrefix, ""),
 					hash: encode(obj.key),
 					key: obj,
 					lastModified: "--",

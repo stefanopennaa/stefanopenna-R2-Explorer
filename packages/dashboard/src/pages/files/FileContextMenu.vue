@@ -9,6 +9,9 @@
     <q-item clickable v-close-popup @click="renameObject" v-if="prop.row.type === 'file'">
       <q-item-section>Rename</q-item-section>
     </q-item>
+    <q-item clickable v-close-popup @click="duplicateObject">
+      <q-item-section>Duplicate</q-item-section>
+    </q-item>
     <q-item clickable v-close-popup @click="updateMetadataObject" v-if="prop.row.type === 'file'">
       <q-item-section>Update Metadata</q-item-section>
     </q-item>
@@ -25,6 +28,12 @@
         <q-item-label caption>Link to view in dashboard</q-item-label>
       </q-item-section>
     </q-item>
+    <q-item clickable v-close-popup @click="copyPublicUrl" v-if="prop.row.type === 'file' && bucketPublicUrl">
+      <q-item-section>
+        <q-item-label>Copy Public URL</q-item-label>
+        <q-item-label caption>Direct link via public domain</q-item-label>
+      </q-item-section>
+    </q-item>
     <q-separator />
     <q-item clickable v-close-popup @click="deleteObject">
       <q-item-section>Delete</q-item-section>
@@ -33,7 +42,7 @@
 </template>
 <script>
 import { useQuasar } from "quasar";
-import { ROOT_FOLDER, decode, encode } from "src/appUtils";
+import { ROOT_FOLDER, apiHandler, decode, encode } from "src/appUtils";
 import { useMainStore } from "stores/main-store";
 
 export default {
@@ -54,10 +63,19 @@ export default {
 			}
 			return "";
 		},
+		bucketPublicUrl: function () {
+			const bucket = this.mainStore.buckets.find(
+				(b) => b.name === this.selectedBucket,
+			);
+			return bucket?.publicUrl || null;
+		},
 	},
 	methods: {
 		renameObject: function () {
 			this.$emit("renameObject", this.prop.row);
+		},
+		duplicateObject: function () {
+			this.$emit("duplicateObject", this.prop.row);
 		},
 		updateMetadataObject: function () {
 			this.$emit("updateMetadataObject", this.prop.row);
@@ -113,15 +131,49 @@ export default {
 				});
 			}
 		},
-		downloadObject: function () {
-			const link = document.createElement("a");
-			link.download = this.prop.row.name;
+		copyPublicUrl: async function () {
+			const baseUrl = this.bucketPublicUrl.replace(/\/+$/, "");
+			const url = `${baseUrl}/${this.prop.row.key}`;
 
-			link.href = `${this.mainStore.serverUrl}/api/buckets/${this.selectedBucket}/${encode(this.prop.row.key)}`;
+			try {
+				await navigator.clipboard.writeText(url);
+				this.q.notify({
+					message: "Public URL copied to clipboard!",
+					timeout: 5000,
+					type: "positive",
+				});
+			} catch (err) {
+				this.q.notify({
+					message: `Failed to copy: ${err}`,
+					timeout: 5000,
+					type: "negative",
+				});
+			}
+		},
+		downloadObject: async function () {
+			try {
+				const response = await apiHandler.downloadFile(
+					this.selectedBucket,
+					this.prop.row.key,
+					{ downloadType: "objectUrl" },
+				);
 
-			document.body.appendChild(link);
-			link.click();
-			document.body.removeChild(link);
+				const blob = new Blob([response.data]);
+				const url = URL.createObjectURL(blob);
+				const link = document.createElement("a");
+				link.download = this.prop.row.name;
+				link.href = url;
+				document.body.appendChild(link);
+				link.click();
+				document.body.removeChild(link);
+				URL.revokeObjectURL(url);
+			} catch (err) {
+				this.q.notify({
+					message: `Download failed: ${err.message || err}`,
+					timeout: 5000,
+					type: "negative",
+				});
+			}
 		},
 	},
 	setup() {
